@@ -1,19 +1,15 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
-import os
-import base64
+import openai, os, base64
 
 app = Flask(__name__)
 CORS(app)
-
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 啟動時讀取 styles.txt
+# 讀取你的風格知識庫
 with open('styles.txt', encoding='utf-8') as f:
     styles_text = f.read()
 
-# 預設提示語（Prompt）
 prompt_base = f"""
 你是一位專業室內設計師，請根據使用者上傳的照片，從"styles.txt"已定義的六種風格中找出最貼近者（北歐風、工業風、混搭風、簡約風、鄉村風、現代風）。六種風格說明如下：
 {styles_text}
@@ -36,7 +32,6 @@ def design_copy():
     img_bytes = img_file.read()
     img_b64 = base64.b64encode(img_bytes).decode("utf-8")
 
-    # 串 Vision+Prompt
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -44,7 +39,8 @@ def design_copy():
             {
                 "role": "user",
                 "content": [
-                    {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_b64}"},
+                    # ⚠️ 必須用 dict 格式
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
                     {"type": "text", "text": prompt_base}
                 ]
             }
@@ -53,10 +49,7 @@ def design_copy():
     reply = response.choices[0].message.content
     return jsonify({"reply": reply})
 
-# 可選首頁確認
 @app.route("/")
 def index():
     return "室內設計風格辨識小幫手 API 運作中"
 
-if __name__ == "__main__":
-    app.run()
