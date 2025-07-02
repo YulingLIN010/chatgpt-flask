@@ -2,22 +2,61 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import openai
 import os
+import base64
 
 app = Flask(__name__)
 CORS(app)
 
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-@app.route("/api/chat", methods=["POST"])
-def chat():
-    data = request.json
-    user_message = data.get("message", "")
+# 啟動時讀取 styles.txt
+with open('styles.txt', encoding='utf-8') as f:
+    styles_text = f.read()
+
+# 預設提示語（Prompt）
+prompt_base = f"""
+你是一位專業室內設計師，請根據使用者上傳的照片，從"styles.txt"已定義的六種風格中找出最貼近者（北歐風、工業風、混搭風、簡約風、鄉村風、現代風）。六種風格說明如下：
+{styles_text}
+
+請依以下步驟分析：
+1️⃣【風格判斷】：照片屬於哪一種風格？  
+2️⃣【判斷依據】：請列出推論依據（至少3點）  
+3️⃣【建材分析】：列出空間所使用的建材，並解釋其與風格的關聯  
+4️⃣【設計理念】：列出該風格的5個核心理念（由先備知識撈取）  
+5️⃣【社群文案】：撰寫250字的社群文案，語氣具備"設計師專業"及"文青溫馨" 2種版本的文案供使用者選擇，也加入2~5個Emoji與Hashtag
+
+請以繁體中文完整回覆，並內容可直接用於平台發布。
+"""
+
+@app.route("/api/design_copy", methods=["POST"])
+def design_copy():
+    if 'image' not in request.files:
+        return jsonify({"reply": "未收到圖片，請重新上傳！"}), 400
+    img_file = request.files['image']
+    img_bytes = img_file.read()
+    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+    # 串 Vision+Prompt
     response = client.chat.completions.create(
-        model="gpt-4o", # gpt-4o 就是所謂 GPT-4.1
-        messages=[{"role": "user", "content": user_message}]
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": prompt_base},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_b64}"},
+                    {"type": "text", "text": prompt_base}
+                ]
+            }
+        ]
     )
     reply = response.choices[0].message.content
     return jsonify({"reply": reply})
 
+# 可選首頁確認
+@app.route("/")
+def index():
+    return "室內設計風格辨識小幫手 API 運作中"
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
